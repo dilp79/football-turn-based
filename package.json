@@ -1,0 +1,16 @@
+{
+  "name": "football-turn-based",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "python3 -m http.server 4173",
+    "test": "node scripts/smoke-test.mjs",
+    "test:ai": "node scripts/ai-smoke-test.mjs",
+    "test:systems": "node scripts/match-systems-test.mjs",
+    "test:tutorial": "node scripts/tutorial-smoke-test.mjs",
+    "ui:snapshots": "node scripts/layout-snapshots.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.59.1"
+  }
+}
