@@ -5,6 +5,7 @@ import {
   GOALS,
   PLAYER_CATALOG,
   POSITION_LABELS,
+  TEAM_SIZE,
   TEAM_DEFS,
 } from "./data.js";
 import { SHOT_SECTORS } from "./game.js";
@@ -133,6 +134,14 @@ function getInstruction(game) {
   if (game.state.selectedAction === "dribble") {
     return "Выберите соседнего соперника, через которого пойдёт дриблинг.";
   }
+  const activeCarrier = game.getActiveBallCarrier?.();
+  if (
+    game.state.phase === "match" &&
+    activeCarrier?.teamId === game.state.turn.activeTeam &&
+    activeCarrier.position === "GK"
+  ) {
+    return `${activeCarrier.name} поймал мяч. Завершить ход нельзя, пока вратарь не введёт его в игру пасом.`;
+  }
   const team = game.getCurrentTeam();
   if (!team) {
     return "";
@@ -148,6 +157,43 @@ function renderRuleTags(tags) {
     <div class="rule-tags">
       ${tags.map((tag) => `<span class="rule-tag">${escapeHtml(tag)}</span>`).join("")}
     </div>
+  `;
+}
+
+function getVisibleDraftCards(game, teamId = game.state.draft.activeTeam) {
+  const positionOrder = {
+    GK: 0,
+    DEF: 1,
+    MID: 2,
+    FWD: 3,
+  };
+
+  return game.state.marketIds
+    .map((cardId) => game.getCard(cardId))
+    .filter(Boolean)
+    .filter((card) => game.canBuyCard(card.id, teamId).ok)
+    .sort(
+      (left, right) =>
+        positionOrder[left.position] - positionOrder[right.position] ||
+        left.cost - right.cost ||
+        left.name.localeCompare(right.name),
+    );
+}
+
+function renderDraftProgress(team) {
+  return `
+    <section class="draft-progress" aria-label="Прогресс комплектации состава">
+      <div class="draft-progress__head">
+        <strong>${team.rosterIds.length}/${TEAM_SIZE} мест занято</strong>
+        <span>Осталось ${TEAM_SIZE - team.rosterIds.length}</span>
+      </div>
+      <div class="draft-progress__slots">
+        ${Array.from({ length: TEAM_SIZE }, (_, index) => {
+          const filled = index < team.rosterIds.length;
+          return `<span class="draft-progress__slot ${filled ? "draft-progress__slot--filled" : ""}"></span>`;
+        }).join("")}
+      </div>
+    </section>
   `;
 }
 
@@ -554,7 +600,13 @@ function renderActionPanel(game, tutorial = null) {
           .join("")}
       </div>
       <p class="subtle">
-        ${player.position === "GK" ? "Вратарь не двигается, но может начинать атаки пасом после сейва." : "Фишки двигаются только по ортогонали, мяч подбирается автоматически."}
+        ${
+          player.position === "GK"
+            ? player.hasBall
+              ? "Вратарь держит мяч в руках: нужно сразу ввести его в игру пасом, завершение хода заблокировано."
+              : "Вратарь не двигается, но может начинать атаки пасом после сейва."
+            : "Фишки двигаются только по ортогонали, мяч подбирается автоматически."
+        }
       </p>
     </section>
   `;
@@ -746,6 +798,7 @@ function renderDraftLayout(game, tutorial = null) {
   const activeTeam = game.getCurrentTeam();
   const otherTeamId = activeTeam.id === 0 ? 1 : 0;
   const otherTeam = game.getTeam(otherTeamId);
+  const visibleCards = getVisibleDraftCards(game, activeTeam.id);
 
   return `
     <main class="screen screen--draft">
@@ -762,18 +815,24 @@ function renderDraftLayout(game, tutorial = null) {
             "100 монет",
             "5 игроков",
             "1 обязательный GK",
+            `Занято ${activeTeam.rosterIds.length}/${TEAM_SIZE}`,
             game.state.mode === "ai" ? "Драфт против ИИ" : "Hot-seat драфт по очереди",
           ])}
+          ${renderDraftProgress(activeTeam)}
           <div class="market-grid market-grid--draft">
-            ${game.state.marketIds
-              .map((cardId) =>
+            ${
+              visibleCards.length
+                ? visibleCards
+              .map((card) =>
                 renderPlayerCard(
                   game,
-                  PLAYER_CATALOG.find((card) => card.id === cardId),
+                  PLAYER_CATALOG.find((catalogCard) => catalogCard.id === card.id),
                   { clickable: true, market: true },
                 ),
               )
-              .join("")}
+              .join("")
+                : '<div class="empty-state">Для текущего менеджера не осталось легальных карточек. Ход продолжится после ответных пиков соперника.</div>'
+            }
           </div>
         </section>
       </section>
@@ -784,6 +843,7 @@ function renderDraftLayout(game, tutorial = null) {
           <h2>${escapeHtml(activeTeam.name)}</h2>
           <p>${escapeHtml(getInstruction(game))}</p>
           <p class="subtle">Управление: ${escapeHtml(getControllerLabel(game, activeTeam.id))}.</p>
+          ${renderDraftProgress(activeTeam)}
           ${renderRuleTags(getRosterNeeds(game, activeTeam.id))}
         </section>
 
@@ -796,7 +856,8 @@ function renderDraftLayout(game, tutorial = null) {
         <section class="panel-card">
           <div class="panel-card__eyebrow">Прогресс соперника</div>
           <h2>${escapeHtml(otherTeam.shortName)}</h2>
-          <p>${otherTeam.rosterIds.length}/5 игроков собрано. Детальный просмотр состава не должен конкурировать с рынком, поэтому здесь только компактный прогресс.</p>
+          <p>${otherTeam.rosterIds.length}/${TEAM_SIZE} игроков собрано. Детальный просмотр состава не должен конкурировать с рынком, поэтому здесь только компактный прогресс.</p>
+          ${renderDraftProgress(otherTeam)}
           ${renderMiniRoster(game, otherTeamId, { mode: "draft" })}
         </section>
       </aside>
@@ -876,14 +937,14 @@ function renderMatchTurnBar(game, tutorial = null) {
   const team = game.getTeam(game.state.turn.activeTeam);
   const [dieA, dieB] = game.state.turn.dice;
   const aiDecisionLocked = isAiThinking(game);
+  const endTurnBlockReason = !aiDecisionLocked ? game.getEndTurnBlockReason() : "";
   const freeKickLabel =
     game.state.freeKick?.teamId === team.id ? "Штрафной розыгрыш" : "";
   return `
     <section class="turn-bar ${tutorialFocusClass(tutorial, "turn-bar")}">
       <div class="turn-bar__team">
-        <div class="panel-card__eyebrow">Ход</div>
-        <h2>${escapeHtml(team.name)}</h2>
-        <p>${escapeHtml(getInstruction(game))}</p>
+        <div class="panel-card__eyebrow">Ход · ${escapeHtml(team.shortName)}</div>
+        <p class="turn-bar__summary">${escapeHtml(getInstruction(game))}</p>
       </div>
 
       <div class="turn-bar__metrics">
@@ -911,9 +972,9 @@ function renderMatchTurnBar(game, tutorial = null) {
 
       <div class="turn-bar__actions">
         <button class="chip ${game.state.turn.surgeArmed ? "chip--active" : ""}" data-surge-toggle ${!game.canUseSurge() || game.state.pendingChoice || aiDecisionLocked ? "disabled" : ""}>
-          ${game.state.turn.surgeArmed ? "Рывок заряжен" : `Подготовить рывок +${game.state.turn.surge}`}
+          ${game.state.turn.surgeArmed ? "Рывок заряжен" : `Рывок +${game.state.turn.surge}`}
         </button>
-        <button class="chip" data-end-turn ${game.state.pendingChoice || aiDecisionLocked ? "disabled" : ""}>
+        <button class="chip" data-end-turn ${game.state.pendingChoice || aiDecisionLocked || endTurnBlockReason ? "disabled" : ""} ${endTurnBlockReason ? `title="${escapeHtml(endTurnBlockReason)}"` : ""}>
           Завершить ход
         </button>
       </div>

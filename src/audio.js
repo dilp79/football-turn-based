@@ -1,11 +1,8 @@
 const STORAGE_KEY = "football-turn-audio-muted";
-const MASTER_GAIN = 0.14;
+const MASTER_GAIN = 0.26;
 
 function getDefaultMuted() {
-  if (typeof window === "undefined") {
-    return true;
-  }
-  return window.matchMedia?.("(max-width: 768px)")?.matches ?? false;
+  return false;
 }
 
 function loadMutedState() {
@@ -46,7 +43,7 @@ class FootballAudio {
 
   async unlock() {
     const context = this.ensureContext();
-    if (!context || this.muted) {
+    if (!context) {
       return false;
     }
     if (context.state === "running") {
@@ -80,7 +77,7 @@ class FootballAudio {
     }
 
     if (!this.context) {
-      this.context = new AudioContextCtor();
+      this.context = new AudioContextCtor({ latencyHint: "interactive" });
       this.master = this.context.createGain();
       this.master.gain.value = this.muted ? 0 : MASTER_GAIN;
       this.master.connect(this.context.destination);

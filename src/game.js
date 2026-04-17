@@ -126,7 +126,7 @@ export class FootballTurnGame {
   reset() {
     this.state = {
       mode: "hotseat",
-      aiLevel: 1,
+      aiLevel: 2,
       phase: "draft",
       teams: TEAM_DEFS.map(createTeamState),
       marketIds: PLAYER_CATALOG.map((card) => card.id),
@@ -233,6 +233,35 @@ export class FootballTurnGame {
       return this.getTeam(this.state.turn.activeTeam);
     }
     return null;
+  }
+
+  getActiveBallCarrier() {
+    if (!this.state.ball.carrierId) {
+      return null;
+    }
+    return this.getPlayer(this.state.ball.carrierId);
+  }
+
+  getEndTurnBlockReason() {
+    if (this.state.phase !== "match" || this.state.pendingChoice) {
+      return "";
+    }
+
+    const carrier = this.getActiveBallCarrier();
+    if (
+      carrier &&
+      carrier.teamId === this.state.turn.activeTeam &&
+      carrier.position === "GK" &&
+      carrier.hasBall
+    ) {
+      return `${carrier.name} держит мяч в руках. Вратарь обязан ввести его в игру пасом.`;
+    }
+
+    return "";
+  }
+
+  canEndTurn() {
+    return !this.getEndTurnBlockReason();
   }
 
   addTeamStat(stat, teamId, amount = 1) {
@@ -780,6 +809,9 @@ export class FootballTurnGame {
 
   endTurn(reason = "") {
     if (this.state.phase !== "match" || this.state.pendingChoice) {
+      return false;
+    }
+    if (!this.canEndTurn()) {
       return false;
     }
     const nextTeam = opposingTeam(this.state.turn.activeTeam);

@@ -476,7 +476,11 @@ root.addEventListener("click", async (event) => {
 
   const muteButton = event.target.closest("[data-mute-toggle]");
   if (muteButton) {
-    audio.toggleMuted();
+    const muted = audio.toggleMuted();
+    if (!muted) {
+      await audio.unlock();
+      audio.turnStart();
+    }
     render({ scheduleAi: false });
     return;
   }

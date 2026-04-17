@@ -14,6 +14,10 @@ const SHOT_SECTORS = [
 ];
 
 const AI_TEAM_ID = 1;
+const ROLE_HOME_X = {
+  0: { GK: 0, DEF: 2, MID: 4, FWD: 6 },
+  1: { GK: 14, DEF: 12, MID: 10, FWD: 8 },
+};
 
 const PLACEMENT_PATTERNS = {
   1: {
@@ -113,6 +117,64 @@ function progressToGoal(teamId, fromX, toX) {
 
 function ownGoalDanger(teamId, x) {
   return 14 - Math.abs(GOALS[teamId].x - x);
+}
+
+function getRoleHomeX(teamId, position) {
+  return ROLE_HOME_X[teamId]?.[position] ?? 7;
+}
+
+function getTacticalAnchor(game, player) {
+  const formation = game.state.placement?.formation?.[player.id];
+  const roleHomeX = getRoleHomeX(player.teamId, player.position);
+  return {
+    x: formation ? Math.round((formation.x + roleHomeX) / 2) : roleHomeX,
+    y: formation?.y ?? 4,
+  };
+}
+
+function scoreShapeDiscipline(game, player, cell, { possessionTeamId = null } = {}) {
+  const anchor = getTacticalAnchor(game, player);
+  const currentAnchorDistance = manhattanDistance(player, anchor);
+  const futureAnchorDistance = manhattanDistance(cell, anchor);
+  const forwardProgress = progressToGoal(player.teamId, player.x, cell.x);
+  let score = (currentAnchorDistance - futureAnchorDistance) * 3;
+
+  if (player.position === "DEF") {
+    score -= Math.max(0, forwardProgress) * 2.5;
+  } else if (player.position === "MID") {
+    score += forwardProgress;
+  } else if (player.position === "FWD") {
+    score += Math.max(0, forwardProgress) * 2.5;
+  }
+
+  if (possessionTeamId !== null && possessionTeamId !== player.teamId) {
+    if (player.position === "DEF") {
+      score += (currentAnchorDistance - futureAnchorDistance) * 2;
+    } else if (player.position === "MID") {
+      score += (currentAnchorDistance - futureAnchorDistance) * 1.2;
+    } else if (futureAnchorDistance > currentAnchorDistance) {
+      score -= 2;
+    }
+  }
+
+  return score;
+}
+
+function scoreSupportSpacing(game, player, cell) {
+  const carrier = game.state.ball.carrierId ? game.getPlayer(game.state.ball.carrierId) : null;
+  if (!carrier || carrier.teamId !== player.teamId || carrier.id === player.id) {
+    return 0;
+  }
+
+  const idealDistanceByRole = {
+    DEF: 4,
+    MID: 3,
+    FWD: 2,
+  };
+  const idealDistance = idealDistanceByRole[player.position] ?? 3;
+  const currentDelta = Math.abs(manhattanDistance(player, carrier) - idealDistance);
+  const futureDelta = Math.abs(manhattanDistance(cell, carrier) - idealDistance);
+  return (currentDelta - futureDelta) * 2.5;
 }
 
 function statTotal(card) {
@@ -340,7 +402,19 @@ function scorePassAction(game, player, action) {
     const receiver = game.getPlayer(receiverId);
     const forwardProgress = progressToGoal(player.teamId, player.x, action.x);
     const shotThreat = receiver.shot + (receiver.position === "FWD" ? 3 : 0);
-    return 20 + forwardProgress * 6 + shotThreat - action.cost * 2 - interceptPenalty;
+    const anchor = getTacticalAnchor(game, receiver);
+    const roleSpacing = Math.max(0, 5 - manhattanDistance(receiver, anchor)) * 1.5;
+    const roleBonus =
+      receiver.position === "FWD" ? 5 : receiver.position === "MID" ? 3 : 0;
+    return (
+      20 +
+      forwardProgress * 6 +
+      shotThreat +
+      roleSpacing +
+      roleBonus -
+      action.cost * 2 -
+      interceptPenalty
+    );
   }
 
   const zoneProgress = progressToGoal(player.teamId, player.x, action.x);
@@ -349,6 +423,7 @@ function scorePassAction(game, player, action) {
 
 function scoreMoveAction(game, player, action) {
   let score = 8 - action.cost;
+  const carrier = game.state.ball.carrierId ? game.getPlayer(game.state.ball.carrierId) : null;
 
   if (!game.state.ball.carrierId && game.state.ball.x === action.x && game.state.ball.y === action.y) {
     score += 22;
@@ -357,19 +432,30 @@ function scoreMoveAction(game, player, action) {
   if (player.hasBall) {
     const moveProgress = progressToGoal(player.teamId, player.x, action.x);
     score += 12 + moveProgress * 7;
+    score += scoreShapeDiscipline(game, player, { x: action.x, y: action.y }, {
+      possessionTeamId: player.teamId,
+    });
   } else if (!game.state.ball.carrierId) {
     const currentBallDistance = manhattanDistance(player, game.state.ball);
     const futureBallDistance = manhattanDistance({ x: action.x, y: action.y }, game.state.ball);
     score += (currentBallDistance - futureBallDistance) * 5;
+    score += scoreShapeDiscipline(game, player, { x: action.x, y: action.y });
   } else {
-    const ballCarrier = game.getPlayer(game.state.ball.carrierId);
-    if (ballCarrier?.teamId === player.teamId) {
-      score += progressToGoal(player.teamId, player.x, action.x) * 3;
+    if (carrier?.teamId === player.teamId) {
+      score += scoreSupportSpacing(game, player, { x: action.x, y: action.y });
+      score += scoreShapeDiscipline(game, player, { x: action.x, y: action.y }, {
+        possessionTeamId: player.teamId,
+      });
     } else {
-      const currentCarrierDistance = manhattanDistance(player, ballCarrier);
-      const futureCarrierDistance = manhattanDistance({ x: action.x, y: action.y }, ballCarrier);
-      score += (currentCarrierDistance - futureCarrierDistance) * 4;
-      score += ownGoalDanger(player.teamId, ballCarrier.x);
+      const currentCarrierDistance = manhattanDistance(player, carrier);
+      const futureCarrierDistance = manhattanDistance({ x: action.x, y: action.y }, carrier);
+      const chaseWeight =
+        player.position === "DEF" ? 5 : player.position === "MID" ? 3.5 : 1.5;
+      score += (currentCarrierDistance - futureCarrierDistance) * chaseWeight;
+      score += ownGoalDanger(player.teamId, carrier.x);
+      score += scoreShapeDiscipline(game, player, { x: action.x, y: action.y }, {
+        possessionTeamId: carrier.teamId,
+      });
     }
   }
 
@@ -453,6 +539,26 @@ export function planAiMatchStep(game) {
   }
 
   if (!best) {
+    const carrier = game.getActiveBallCarrier?.();
+    if (
+      carrier &&
+      carrier.teamId === AI_TEAM_ID &&
+      carrier.position === "GK" &&
+      carrier.hasBall
+    ) {
+      const forcedPass =
+        game.getPassTargets(carrier).find((target) => game.state.board[target.y][target.x]) ??
+        game.getPassTargets(carrier)[0] ??
+        null;
+
+      if (forcedPass) {
+        return [
+          { type: "selectPlayer", playerId: carrier.id },
+          { type: "pass", x: forcedPass.x, y: forcedPass.y, cost: forcedPass.cost },
+        ];
+      }
+    }
+
     return [{ type: "endTurn" }];
   }
 

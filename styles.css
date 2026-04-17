@@ -246,7 +246,6 @@ button {
 
 .team-strip__top,
 .section-head,
-.turn-bar,
 .team-ribbon__head {
   display: flex;
   justify-content: space-between;
@@ -341,6 +340,47 @@ button {
   max-height: none;
   overflow: visible;
   padding-right: 0;
+}
+
+.draft-progress,
+.draft-progress__slots {
+  display: grid;
+  gap: 10px;
+}
+
+.draft-progress {
+  margin: 14px 0 18px;
+}
+
+.draft-progress__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.draft-progress__head strong {
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.draft-progress__slots {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.draft-progress__slot {
+  min-height: 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.draft-progress__slot--filled {
+  border-color: rgba(255, 212, 104, 0.42);
+  background:
+    linear-gradient(90deg, rgba(255, 212, 104, 0.78), rgba(233, 116, 86, 0.64));
 }
 
 .draft-sidebar,
@@ -640,8 +680,8 @@ button {
   inset: 0;
   z-index: 60;
   display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: center;
   padding: 24px;
   background:
     radial-gradient(circle at 18% 12%, rgba(255, 212, 104, 0.12), transparent 28%),
@@ -1043,7 +1083,11 @@ button {
 }
 
 .turn-bar {
-  padding: 16px 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
   border-radius: 18px;
   border: 2px solid var(--line);
   background:
@@ -1058,30 +1102,38 @@ button {
 
 .turn-bar__team {
   min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.turn-bar__summary {
+  font-size: 0.82rem;
+  line-height: 1.35;
 }
 
 .turn-bar__metrics {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(58px, auto));
+  gap: 8px;
   align-items: center;
 }
 
 .turn-metric {
-  padding: 10px 12px;
-  border-radius: 14px;
+  min-width: 62px;
+  padding: 8px 10px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.04);
   text-align: center;
 }
 
 .turn-metric strong {
   display: block;
-  font-size: 1.35rem;
+  font-size: 1.12rem;
 }
 
 .turn-metric span {
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: 0.68rem;
 }
 
 .turn-metric--alert {
@@ -1090,9 +1142,17 @@ button {
 }
 
 .turn-bar__actions {
-  display: grid;
-  gap: 10px;
-  justify-items: end;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.turn-bar .die {
+  width: 42px;
+  height: 42px;
+  font-size: 1.15rem;
+  border-radius: 12px;
 }
 
 .match-support {
@@ -1437,9 +1497,13 @@ button {
 
   .hero-bar,
   .pitch-header,
-  .section-head,
-  .turn-bar {
+  .section-head {
     flex-direction: column;
+    align-items: stretch;
+  }
+
+  .turn-bar {
+    grid-template-columns: 1fr;
     align-items: stretch;
   }
 
@@ -1461,7 +1525,11 @@ button {
   }
 
   .turn-bar__actions {
-    justify-items: stretch;
+    justify-content: flex-start;
+  }
+
+  .turn-bar__actions > * {
+    flex: 1 1 auto;
   }
 
   .pitch-grid {
@@ -1480,8 +1548,8 @@ button {
 
   .tutorial-overlay {
     padding: 12px;
-    align-items: flex-end;
-    justify-content: stretch;
+    align-items: center;
+    justify-content: center;
   }
 
   .tutorial-tooltip {
